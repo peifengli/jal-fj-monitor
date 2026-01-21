@@ -3,6 +3,9 @@ name: JAL Availability Checker
 on:
   workflow_dispatch: # This is CRITICAL. It allows API triggering.
 
+permissions:      # <--- ADD THIS BLOCK
+  contents: write
+
 jobs:
   check-flights:
     runs-on: ubuntu-latest
@@ -24,3 +27,13 @@ jobs:
           SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python src/monitor.py
+      
+      # <--- ADD THESE STEPS TO COMMIT THE JSON FILE
+      - name: Commit and Push JSON
+        run: |
+          git config --global user.name "JAL-Bot"
+          git config --global user.email "bot@github.com"
+          git add results.json
+          # Only commit if there are changes
+          git commit -m "Update flight results" || exit 0
+          git push

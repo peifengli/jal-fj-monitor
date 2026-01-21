@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🇯🇵 JAL A35K Monitor</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; background: #f4f4f9; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #d32f2f; margin-top: 0; }
+        .timestamp { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        th { color: #555; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+        .tag.aa { background: #e3f2fd; color: #1565c0; } /* Blue for AA */
+        .tag.as { background: #e0f2f1; color: #00695c; } /* Teal for Alaska */
+        .btn { display: inline-block; text-decoration: none; background: #d32f2f; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; }
+        .btn:hover { background: #b71c1c; }
+        .empty { text-align: center; color: #888; padding: 2rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🇯🇵 JAL Availability</h1>
+        <div id="status" class="timestamp">Loading...</div>
+        
+        <table id="flightTable">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Route</th>
+                    <th>Flight</th>
+                    <th>Cabin</th>
+                    <th>Source</th>
+                    <th>Link</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+        <div id="emptyMsg" class="empty" style="display:none;">No awards found right now.</div>
+    </div>
+
+    <script>
+        fetch('results.json')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').innerText = "Last Updated: " + data.last_updated;
+                const tbody = document.getElementById('tableBody');
+                
+                if (data.flights.length === 0) {
+                    document.getElementById('emptyMsg').style.display = 'block';
+                    document.getElementById('flightTable').style.display = 'none';
+                    return;
+                }
+
+                data.flights.forEach(f => {
+                    const row = `
+                        <tr>
+                            <td><b>${f.date}</b></td>
+                            <td>${f.route}</td>
+                            <td>${f.flight}</td>
+                            <td>${f.cabin}</td>
+                            <td><span class="tag ${f.source === 'american' ? 'aa' : 'as'}">${f.source === 'american' ? 'AA' : 'AS'}</span> ${f.cost}</td>
+                            <td><a href="${f.link}" target="_blank" class="btn">Book</a></td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            })
+            .catch(err => {
+                document.getElementById('status').innerText = "Error loading data. (Wait for the first script run)";
+            });
+    </script>
+</body>
+</html>

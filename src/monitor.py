@@ -163,6 +163,30 @@ def notify(flights):
     except Exception as e:
         print(f"❌ Failed to send Discord alert: {e}")
 
+def save_to_json(flights):
+    # Prepare the data for the frontend
+    output_data = {
+        "last_updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "flights": []
+    }
+
+    for f in flights:
+        output_data["flights"].append({
+            "date": f.get("Date"),
+            "route": f"{f['Route']['OriginAirport']} -> {f['Route']['DestinationAirport']}",
+            "flight": f.get("NormalizedFlightNum", "N/A"),
+            "cabin": "First" if f.get("FAvailable") else "Business",
+            "source": f.get("SourceProgram"),
+            "cost": f.get("JMileage") or f.get("FMileage"),
+            "link": f"https://seats.aero/{f.get('SourceProgram')}/{f['Route']['OriginAirport']}/{f['Route']['DestinationAirport']}/{f.get('Date')}"
+        })
+
+    # Write to a file in the root directory (so GitHub Pages can find it)
+    with open("results.json", "w") as f:
+        json.dump(output_data, f, indent=4)
+    print("✅ Saved results to results.json")
+
 if __name__ == "__main__":
     flights = check_flights()
     notify(flights)
+    save_to_json(flights)
