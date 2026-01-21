@@ -2,6 +2,7 @@ import os
 import requests
 import datetime
 import time
+import json
 from dotenv import load_dotenv
 
 # Load local .env file
