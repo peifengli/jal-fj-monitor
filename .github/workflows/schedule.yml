@@ -1,10 +1,7 @@
 name: JAL Availability Checker
 
 on:
-  schedule:
-    # Runs at every minute 
-    - cron: '*/1 * * * *'
-  workflow_dispatch: # Allows manual trigger button in GitHub UI
+  workflow_dispatch: # This is CRITICAL. It allows API triggering.
 
 jobs:
   check-flights:

@@ -1,40 +1,70 @@
 import os
 import requests
 import datetime
+import time
 from dotenv import load_dotenv
 
-# Load local .env file if it exists (for local dev)
+# Load local .env file
 load_dotenv()
 
 # Configuration
 API_KEY = os.environ.get("SEATS_AERO_API_KEY")
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
-ORIGIN = "JFK"
-# Monitoring both Haneda and Narita
-DESTINATIONS = ["HND", "NRT"] 
-# Start looking from today
+
+# Search Window: Today + 330 days
 START_DATE = datetime.date.today()
-# Look 330 days out (Max AA window)
 END_DATE = START_DATE + datetime.timedelta(days=330)
+
+# 1. Routes Reduced to JFK <-> HND only
+ROUTES = [
+    ("JFK", "HND"), 
+    ("HND", "JFK")
+]
+
+# 2. Flight Filter Reduced to JL3/4/5/6
+TARGET_FLIGHTS = {
+    "JL3", "JL4", 
+    "JL5", "JL6"
+}
+
+def normalize_flight_num(code):
+    """
+    Normalizes flight codes to match our set.
+    Ex: "JL006" -> "JL6", "JL 004" -> "JL4"
+    """
+    if not code: return ""
+    code = str(code).replace(" ", "").upper()
+    
+    # If it's just a number (e.g. 5), add JL
+    if code.isdigit():
+        return f"JL{int(code)}"
+        
+    # If it starts with JL, strip leading zeros
+    if code.startswith("JL"):
+        num_part = code[2:]
+        if num_part.isdigit():
+            return f"JL{int(num_part)}"
+            
+    return code
 
 def check_flights():
     if not API_KEY:
-        print("Error: SEATS_AERO_API_KEY is missing.")
+        print("❌ Error: SEATS_AERO_API_KEY is missing.")
         return []
 
     url = "https://seats.aero/partnerapi/search"
     headers = {"Partner-Authorization": API_KEY}
     found_flights = []
-
-    # Check both American and Alaska programs
+    
+    # Sources: American and Alaska
     sources = ["american", "alaska"]
 
-    print(f"🔎 Checking {ORIGIN} to {DESTINATIONS}...")
+    print(f"🔎 Scanning JFK-HND (JL 3/4/5/6)...")
 
-    for dest in DESTINATIONS:
+    for origin, dest in ROUTES:
         for source in sources:
             params = {
-                "origin_airport": ORIGIN,
+                "origin_airport": origin,
                 "destination_airport": dest,
                 "start_date": START_DATE.strftime("%Y-%m-%d"),
                 "end_date": END_DATE.strftime("%Y-%m-%d"),
@@ -46,69 +76,90 @@ def check_flights():
                 resp.raise_for_status()
                 data = resp.json()
             except Exception as e:
-                print(f"❌ Error fetching {source} to {dest}: {e}")
+                print(f"  ❌ Error {origin}->{dest} ({source}): {e}")
                 continue
 
             for flight in data.get("data", []):
-                # Filter: Must be JAL (JL) and Business(J)/First(F)
-                if flight.get("OperatingAirlineCode") == "JL":
-                    if flight.get("JAvailable") or flight.get("FAvailable"):
-                        # Add metadata for the notifier
-                        flight['SourceProgram'] = source
-                        found_flights.append(flight)
+                # 1. Filter Airline (JAL)
+                op_carrier = flight.get("OperatingAirlineCode") or ""
+                if "JL" not in op_carrier: 
+                    continue
+                
+                # 2. Filter Cabin (Business or First)
+                j_avail = flight.get("JAvailable", False)
+                f_avail = flight.get("FAvailable", False)
+                if not (j_avail or f_avail):
+                    continue
+
+                # 3. Filter for Specific Flight Numbers
+                flight_num_raw = flight.get("FlightNumber")
+                flight_code = normalize_flight_num(flight_num_raw)
+
+                if flight_code in TARGET_FLIGHTS:
+                    flight['SourceProgram'] = source
+                    flight['NormalizedFlightNum'] = flight_code
+                    found_flights.append(flight)
+            
+            # Brief pause
+            time.sleep(0.5)
 
     return found_flights
 
 def notify(flights):
     if not flights:
-        print("✅ No new award space found.")
+        print("✅ No JL3/4/5/6 award space found.")
         return
 
-    if not WEBHOOK_URL:
-        print("⚠️ Flights found, but no Discord Webhook URL set.")
-        for f in flights:
-            print(f"  - Found {f['Date']} on {f['OperatingAirlineCode']}")
-        return
-
-    print(f"🚀 Found {len(flights)} flights! Sending Discord notification...")
+    print(f"🚀 Found {len(flights)} seats! Sending Discord alert...")
     
+    if not WEBHOOK_URL:
+        print("⚠️ No Webhook URL set.")
+        return
+
     embeds = []
-    # Discord limit: 10 embeds per message
+    # Sort by date
+    flights.sort(key=lambda x: x['Date'])
+
     for f in flights[:10]:
         date = f.get("Date")
         origin = f['Route']['OriginAirport']
         dest = f['Route']['DestinationAirport']
+        flight_num = f.get("NormalizedFlightNum", "JL??")
         source = f.get("SourceProgram")
         
-        cabin = "FIRST" if f.get("FAvailable") else "BUSINESS"
+        # Cabin Display
+        cabin_list = []
+        if f.get("FAvailable"): cabin_list.append("FIRST")
+        if f.get("JAvailable"): cabin_list.append("BIZ")
+        cabin_str = " + ".join(cabin_list)
+
+        # Cost Display
         cost = f.get("JMileage") or f.get("FMileage")
-        cost_str = f"{int(cost):,} miles" if cost else "Unknown"
+        cost_str = f"{int(cost):,} pts" if cost else "?"
 
-        # Direct link to Seats.aero search for verification
         deep_link = f"https://seats.aero/{source}/{origin}/{dest}/{date}"
-
-        # Color: Red (AA) vs Teal (Alaska)
         color = 0xC8102E if source == 'american' else 0x004165
 
         embed = {
-            "title": f"🇯🇵 JAL {cabin} Found!",
-            "description": f"**{origin} ➡️ {dest}**",
+            "title": f"🇯🇵 {flight_num} {cabin_str} Found!",
+            "description": f"**{origin} ⇄ {dest}**",
             "url": deep_link,
             "color": color,
             "fields": [
                 {"name": "📅 Date", "value": date, "inline": True},
                 {"name": "💰 Cost", "value": cost_str, "inline": True},
-                {"name": "🏦 Via", "value": source.title(), "inline": True}
+                {"name": "✈️ Flight", "value": flight_num, "inline": True}
             ]
         }
         embeds.append(embed)
 
-    payload = {"content": "🚨 **JAL Award Availability Detected** 🚨", "embeds": embeds}
+    payload = {
+        "content": "🚨 **JFK-HND A35K Space Detected** 🚨", 
+        "embeds": embeds
+    }
     
     try:
-        r = requests.post(WEBHOOK_URL, json=payload)
-        r.raise_for_status()
-        print("✅ Notification sent successfully.")
+        requests.post(WEBHOOK_URL, json=payload)
     except Exception as e:
         print(f"❌ Failed to send Discord alert: {e}")
 
