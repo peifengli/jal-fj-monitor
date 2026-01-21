@@ -1,0 +1,29 @@
+name: JAL Availability Checker
+
+on:
+  schedule:
+    # Runs at minute 1 of every hour (avoiding the :00 rush)
+    - cron: '1 * * * *'
+  workflow_dispatch: # Allows manual trigger button in GitHub UI
+
+jobs:
+  check-flights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Monitor Script
+        env:
+          SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python src/monitor.py
