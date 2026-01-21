@@ -2,8 +2,8 @@ name: JAL Availability Checker
 
 on:
   schedule:
-    # Runs at minute 1 of every hour (avoiding the :00 rush)
-    - cron: '1 * * * *'
+    # Runs at every minute 
+    - cron: '*/1 * * * *'
   workflow_dispatch: # Allows manual trigger button in GitHub UI
 
 jobs:
